@@ -58,7 +58,17 @@ start_vnc() {
 	file_env 'VNC_SERVER_PASSWORD'
 	if [ -n "$VNC_SERVER_PASSWORD" ]; then
 		echo ".> Starting VNC server"
-		x11vnc -ncache_cr -display :1 -forever -shared -bg -noipv6 -passwd "$VNC_SERVER_PASSWORD" &
+		# Create temporary password file with secure permissions to avoid exposing
+		# the password in the process list (CWE-200: Information Exposure)
+		_vnc_pass_file="/tmp/.vncpass.$$"
+		echo "$VNC_SERVER_PASSWORD" > "$_vnc_pass_file"
+		chmod 600 "$_vnc_pass_file"
+		# Use -passwdfile instead of -passwd to prevent credential exposure in ps/proc
+		x11vnc -ncache_cr -display :1 -forever -shared -bg -noipv6 -passwdfile "$_vnc_pass_file" &
+		# Give x11vnc time to read the password file before cleanup
+		sleep 1
+		# Clean up temporary password file
+		rm -f "$_vnc_pass_file"
 		unset_env 'VNC_SERVER_PASSWORD'
 	else
 		echo ".> VNC server disabled"

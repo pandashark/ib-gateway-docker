@@ -22,11 +22,11 @@ The scripts system orchestrates container initialization through a startup seque
 ## Key Components
 
 ### Startup Orchestration (run.sh)
-- `start_xvfb:45-58` - Initializes X virtual framebuffer
-- `setup_ssh:107` - Configures SSH tunnel if enabled
-- `set_java_heap:108` - Sets JVM memory limits
-- `start_vnc:110-111` - Starts VNC server for GUI access
-- `start_process:113-122` - Configures ports and launches IB Gateway/TWS
+- `start_xvfb:47-54` - Initializes X virtual framebuffer
+- `start_vnc:56-76` - Starts VNC server with secure password handling (SECURITY CRITICAL)
+- `start_IBC:78-97` - Launches IB Gateway/TWS with IBC control
+- `start_process:99-108` - Configures ports, applies settings, starts forwarding
+- Main sequence: Lines 114-123 (Xvfb → SSH setup → Java heap → VNC → IBC)
 
 ### Configuration Functions (common.sh) - CRITICAL ERROR HANDLING
 - `common.sh:4` - **`set -Eeo pipefail`** (added 2025-10-14) - All functions fail loudly on errors
@@ -42,6 +42,14 @@ The scripts system orchestrates container initialization through a startup seque
 - `start_ssh:198-232` - Validates environment and launches run_ssh.sh
 - `port_forwarding:127-148` - Routes between socat and SSH tunnel modes
 
+### VNC Server Startup (run.sh:start_vnc) - SECURITY CRITICAL
+- `run.sh:56-76` - VNC server initialization with secure credential handling
+- **Fixed CWE-200 (Information Exposure)** - VNC password no longer visible in process list
+- Uses temporary password file with 600 permissions instead of command-line argument
+- Pattern: Create temp file → Write password → Start x11vnc with -passwdfile → Cleanup
+- File cleanup: 1-second delay for x11vnc to read, then rm -f
+- Follows same secure pattern as file_env/unset_env in common.sh
+
 ### SSH Tunnel Loop (run_ssh.sh) - SECURITY CRITICAL
 - Lines 11-23: Infinite loop maintaining SSH remote port forward
 - Line 20: **Direct ssh execution prevents CWE-78 command injection**
@@ -52,6 +60,23 @@ The scripts system orchestrates container initialization through a startup seque
 - Uses socat for TCP relay without authentication
 
 ## Security Considerations
+
+### CRITICAL: VNC Password Exposure Prevention (CWE-200)
+The VNC server startup in run.sh was hardened to prevent password exposure in process listings. Previously, the VNC password was passed via x11vnc's `-passwd` command-line argument, making it visible to all users via `ps aux` or `/proc` filesystem.
+
+**Security Fix (2025-10-14):**
+- Changed from `-passwd "$VNC_SERVER_PASSWORD"` (visible in ps) to `-passwdfile` (secure file-based)
+- Creates temporary password file `/tmp/.vncpass.$$` with 600 permissions (process-specific PID suffix)
+- x11vnc reads password from file, preventing command-line exposure
+- File cleanup after 1-second delay (allows x11vnc to read before deletion)
+- Environment variable cleaned with unset_env after use
+
+**Fixed Files:**
+- stable/scripts/run.sh:56-76
+- latest/scripts/run.sh:56-76
+- image-files/scripts/run.sh:56-76
+
+**Impact:** VNC password only exposed if VNC_SERVER_PASSWORD is set (optional feature, ib-gateway only)
 
 ### CRITICAL: Command Injection Prevention (CWE-78)
 The SSH tunnel implementation in run_ssh.sh was hardened against command injection vulnerabilities. See `/home/pandashark/projects/ib-gateway-docker/SECURITY.md` for details.
@@ -72,22 +97,24 @@ The SSH tunnel implementation in run_ssh.sh was hardened against command injecti
 - tests/security_test_ssh_injection.sh - Validates injection prevention
 
 ### Environment Variables (User-Controlled)
-| Variable | Risk Level | Usage |
-|----------|------------|-------|
-| `SSH_USER_TUNNEL` | HIGH | SSH connection target - must be quoted |
-| `SSH_OPTIONS` | HIGH | Additional SSH options - word splitting required |
-| `SSH_SCREEN` | MEDIUM | VNC/RDP tunnel spec - word splitting required |
-| `SSH_PASSPHRASE` | NONE | Only used by ssh-add, never in shell expansion |
-| `SSH_REMOTE_PORT` | LOW | Numeric, validated by ssh |
-| `SSH_ALIVE_INTERVAL` | LOW | Numeric, validated by ssh |
+| Variable | Risk Level | Usage | Security Measures |
+|----------|------------|-------|-------------------|
+| `VNC_SERVER_PASSWORD` | HIGH | VNC authentication | Temporary file (600 perms), immediate cleanup, unset after use |
+| `SSH_USER_TUNNEL` | HIGH | SSH connection target | Must be quoted in ssh command |
+| `SSH_OPTIONS` | HIGH | Additional SSH options | Word splitting required, validated by ssh |
+| `SSH_SCREEN` | MEDIUM | VNC/RDP tunnel spec | Word splitting required, validated by ssh |
+| `SSH_PASSPHRASE` | NONE | SSH key passphrase | Only used by ssh-add, never in shell expansion |
+| `SSH_REMOTE_PORT` | LOW | Numeric port | Validated by ssh |
+| `SSH_ALIVE_INTERVAL` | LOW | Numeric timeout | Validated by ssh |
 
 ### Defense in Depth
 1. Non-root execution (user ibgateway, UID 1000)
 2. Secrets via file_env pattern (immediate unset after use)
-3. Config files with 600 permissions
-4. SSH key validation before agent loading
-5. Shellcheck validation in CI/CD
-6. Strict error handling in common.sh prevents silent configuration failures (added 2025-10-14)
+3. Config files with 600 permissions (IBC config, VNC password file)
+4. VNC password in temporary file, not process arguments (prevents ps exposure)
+5. SSH key validation before agent loading
+6. Shellcheck validation in CI/CD
+7. Strict error handling in common.sh prevents silent configuration failures (added 2025-10-14)
 
 ## Configuration
 All configuration comes from environment variables set in docker-compose.yml:
@@ -156,5 +183,6 @@ All scripts use `.>` prefix for status messages to distinguish from IB Gateway/T
 - README.md:312-364 - Security considerations for network exposure
 - SECURITY.md - Detailed security patterns and vulnerability mitigation
 - tests/security_test_ssh_injection.sh - Security validation tests
-- sessions/tasks/h-fix-command-injection-ssh.md - SSH command injection security fix
-- sessions/tasks/h-fix-missing-error-handling.md - Strict error handling in common.sh (2025-10-14)
+- sessions/tasks/done/h-fix-command-injection-ssh.md - SSH command injection security fix
+- sessions/tasks/done/h-fix-missing-error-handling.md - Strict error handling in common.sh (2025-10-14)
+- sessions/tasks/h-fix-vnc-password-exposure.md - VNC password exposure fix (2025-10-14)
