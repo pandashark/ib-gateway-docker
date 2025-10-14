@@ -28,6 +28,15 @@ The scripts system orchestrates container initialization through a startup seque
 - `start_vnc:110-111` - Starts VNC server for GUI access
 - `start_process:113-122` - Configures ports and launches IB Gateway/TWS
 
+### Configuration Functions (common.sh) - CRITICAL ERROR HANDLING
+- `common.sh:4` - **`set -Eeo pipefail`** (added 2025-10-14) - All functions fail loudly on errors
+- `apply_settings:6-41` - Writes credentials to IBC config, sets file permissions
+- `set_ports:75-115` - Determines API/SOCAT ports by trading mode (paper/live)
+- `set_java_heap:117-127` - Modifies JVM memory settings via sed
+- `file_env:47-63` - Loads secrets from Docker secret files
+- `unset_env:67-73` - Cleans up secret variables after use
+- Why strict mode matters: Silent failures in these functions could expose credentials, misconfigure ports, or disable security features
+
 ### SSH Tunnel System (common.sh)
 - `setup_ssh:150-196` - Builds SSH options, starts ssh-agent, loads keys
 - `start_ssh:198-232` - Validates environment and launches run_ssh.sh
@@ -78,6 +87,7 @@ The SSH tunnel implementation in run_ssh.sh was hardened against command injecti
 3. Config files with 600 permissions
 4. SSH key validation before agent loading
 5. Shellcheck validation in CI/CD
+6. Strict error handling in common.sh prevents silent configuration failures (added 2025-10-14)
 
 ## Configuration
 All configuration comes from environment variables set in docker-compose.yml:
@@ -130,9 +140,11 @@ All three directories (stable/, latest/, image-files/) maintain identical script
 All scripts use `.>` prefix for status messages to distinguish from IB Gateway/TWS output
 
 ### Error Handling
-- `set -Eo pipefail` in all scripts for early error detection
+- `set -Eeo pipefail` in all scripts including common.sh (added 2025-10-14) for strict error detection
+- Critical: common.sh:4 - Ensures configuration failures halt startup loudly instead of silently
 - Explicit validation before starting services (API_PORT, SOCAT_PORT checks)
 - Graceful handling of optional features (SSH_PASSPHRASE, VNC, etc.)
+- Functions protected: apply_settings(), set_ports(), setup_ssh(), set_java_heap(), port_forwarding(), start_ssh(), start_socat()
 
 ### Background Process Management
 - Uses `pgrep -f` with specific patterns to detect running processes
@@ -144,4 +156,5 @@ All scripts use `.>` prefix for status messages to distinguish from IB Gateway/T
 - README.md:312-364 - Security considerations for network exposure
 - SECURITY.md - Detailed security patterns and vulnerability mitigation
 - tests/security_test_ssh_injection.sh - Security validation tests
-- sessions/tasks/h-fix-command-injection-ssh.md - Security fix context
+- sessions/tasks/h-fix-command-injection-ssh.md - SSH command injection security fix
+- sessions/tasks/h-fix-missing-error-handling.md - Strict error handling in common.sh (2025-10-14)

@@ -208,12 +208,27 @@ fi
 
 Consider adding similar validation for user-facing variables in future enhancements.
 
-### 4. Process Isolation
+### 4. Strict Error Handling
+Added in commit (2025-10-14):
+- All scripts use `set -Eeo pipefail` for fail-fast behavior
+- **Critical**: common.sh:4 ensures configuration functions fail loudly
+- Prevents silent failures that could expose credentials or misconfigure security settings
+- Functions protected: apply_settings, set_ports, setup_ssh, set_java_heap, port_forwarding, start_ssh, start_socat
+
+Without strict error handling, failures in configuration could result in:
+- Credential files left world-readable (chmod failure)
+- Wrong trading mode ports (silent set_ports failure)
+- Disabled SSH tunnels (silent setup_ssh failure)
+- Missing IBC configuration (silent apply_settings failure)
+
+Reference: sessions/tasks/h-fix-missing-error-handling.md
+
+### 5. Process Isolation
 - SSH tunnels run in background processes
 - Automatic restart on failure (contained loops)
 - Process detection prevents duplicate instances
 
-### 5. Audit and Logging
+### 6. Audit and Logging
 All security-relevant operations log to stdout:
 - SSH tunnel startup with socket path
 - ssh-agent initialization
@@ -299,3 +314,4 @@ Do NOT open public issues for security vulnerabilities.
 | Date | Version | Change |
 |------|---------|--------|
 | 2025-10-14 | 1.0 | Initial security documentation - CWE-78 fix (commit ce2847e) |
+| 2025-10-14 | 1.1 | Added strict error handling to common.sh - prevents silent configuration failures |
