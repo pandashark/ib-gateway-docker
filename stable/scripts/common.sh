@@ -1,6 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC1091
 
+set -Eeo pipefail
+
 apply_settings() {
 	# apply env variables into IBC and gateway/TWS config files
 	if [ "$CUSTOM_CONFIG" != "yes" ]; then
