@@ -1,9 +1,10 @@
 ---
 task: h-fix-path-traversal
 branch: fix/path-traversal
-status: in-progress
+status: completed
 created: 2025-10-14
 started: 2025-10-14
+completed: 2025-10-14
 modules: [image-files/scripts, stable/scripts, latest/scripts]
 ---
 
@@ -20,12 +21,12 @@ mkdir "$TWS_SETTINGS_PATH"
 ```
 
 ## Success Criteria
-- [ ] Add validation to reject paths containing `..` (path traversal)
-- [ ] Add `-p` flag to mkdir for parent directory creation (defensive)
-- [ ] Apply fix to all three copies: stable/, latest/, image-files/
-- [ ] Test with valid paths (should work)
-- [ ] Test with malicious paths containing `..` (should fail with error)
-- [ ] Ensure error message is clear and helpful
+- [x] Add validation to reject paths containing `..` (path traversal)
+- [x] Add `-p` flag to mkdir for parent directory creation (defensive)
+- [x] Apply fix to all three copies: stable/, latest/, image-files/
+- [x] Test with valid paths (should work)
+- [x] Test with malicious paths containing `..` (should fail with error)
+- [x] Ensure error message is clear and helpful
 
 ## Context Files
 - @stable/scripts/common.sh:20-30

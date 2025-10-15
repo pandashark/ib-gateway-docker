@@ -1,6 +1,6 @@
 {
-  "task": "h-fix-path-traversal",
-  "branch": "fix/path-traversal",
-  "services": ["image-files/scripts", "stable/scripts", "latest/scripts"],
+  "task": null,
+  "branch": null,
+  "services": [],
   "updated": "2025-10-14"
 }

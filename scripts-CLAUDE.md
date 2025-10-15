@@ -30,17 +30,19 @@ The scripts system orchestrates container initialization through a startup seque
 
 ### Configuration Functions (common.sh) - CRITICAL ERROR HANDLING
 - `common.sh:4` - **`set -Eeo pipefail`** (added 2025-10-14) - All functions fail loudly on errors
-- `apply_settings:6-41` - Writes credentials to IBC config, sets file permissions
-- `set_ports:75-115` - Determines API/SOCAT ports by trading mode (paper/live)
-- `set_java_heap:117-127` - Modifies JVM memory settings via sed
-- `file_env:47-63` - Loads secrets from Docker secret files
-- `unset_env:67-73` - Cleans up secret variables after use
+- `apply_settings:6-48` - Writes credentials to IBC config, sets file permissions (SECURITY CRITICAL)
+  - Lines 23-26: Path traversal validation for TWS_SETTINGS_PATH (CWE-22 prevention)
+  - Line 32: mkdir -p flag for defense-in-depth (prevents race conditions)
+- `set_ports:82-122` - Determines API/SOCAT ports by trading mode (paper/live)
+- `set_java_heap:124-134` - Modifies JVM memory settings via sed
+- `file_env:54-70` - Loads secrets from Docker secret files
+- `unset_env:74-80` - Cleans up secret variables after use
 - Why strict mode matters: Silent failures in these functions could expose credentials, misconfigure ports, or disable security features
 
 ### SSH Tunnel System (common.sh)
-- `setup_ssh:150-196` - Builds SSH options, starts ssh-agent, loads keys
-- `start_ssh:198-232` - Validates environment and launches run_ssh.sh
-- `port_forwarding:127-148` - Routes between socat and SSH tunnel modes
+- `setup_ssh:159-205` - Builds SSH options, starts ssh-agent, loads keys
+- `start_ssh:207-241` - Validates environment and launches run_ssh.sh
+- `port_forwarding:136-157` - Routes between socat and SSH tunnel modes
 
 ### VNC Server Startup (run.sh:start_vnc) - SECURITY CRITICAL
 - `run.sh:56-76` - VNC server initialization with secure credential handling
@@ -60,6 +62,23 @@ The scripts system orchestrates container initialization through a startup seque
 - Uses socat for TCP relay without authentication
 
 ## Security Considerations
+
+### CRITICAL: Path Traversal Prevention (CWE-22)
+The apply_settings function in common.sh was hardened to prevent path traversal attacks via the TWS_SETTINGS_PATH environment variable. Previously, user-controlled paths could potentially escape the container filesystem boundaries using ".." sequences.
+
+**Security Fix (2025-10-14):**
+- Added regex validation rejecting any path containing ".." (common.sh:23-26)
+- Changed mkdir to mkdir -p for defense-in-depth (prevents TOCTOU race conditions)
+- Container fails fast with clear error message if invalid path detected
+- Prevents writing TWS settings outside intended directory hierarchy
+
+**Fixed Files:**
+- stable/scripts/common.sh:23-26, 32
+- latest/scripts/common.sh:23-26, 32
+- image-files/scripts/common.sh:23-26, 32
+
+**Impact:** TWS_SETTINGS_PATH is user-controlled via docker-compose.yml environment variables
+**Risk Level:** MEDIUM (containerized environment limits exploitation, but defense-in-depth required)
 
 ### CRITICAL: VNC Password Exposure Prevention (CWE-200)
 The VNC server startup in run.sh was hardened to prevent password exposure in process listings. Previously, the VNC password was passed via x11vnc's `-passwd` command-line argument, making it visible to all users via `ps aux` or `/proc` filesystem.
@@ -99,6 +118,7 @@ The SSH tunnel implementation in run_ssh.sh was hardened against command injecti
 ### Environment Variables (User-Controlled)
 | Variable | Risk Level | Usage | Security Measures |
 |----------|------------|-------|-------------------|
+| `TWS_SETTINGS_PATH` | MEDIUM | Settings directory path | Regex validation (rejects ".."), mkdir -p for safety |
 | `VNC_SERVER_PASSWORD` | HIGH | VNC authentication | Temporary file (600 perms), immediate cleanup, unset after use |
 | `SSH_USER_TUNNEL` | HIGH | SSH connection target | Must be quoted in ssh command |
 | `SSH_OPTIONS` | HIGH | Additional SSH options | Word splitting required, validated by ssh |
@@ -111,13 +131,20 @@ The SSH tunnel implementation in run_ssh.sh was hardened against command injecti
 1. Non-root execution (user ibgateway, UID 1000)
 2. Secrets via file_env pattern (immediate unset after use)
 3. Config files with 600 permissions (IBC config, VNC password file)
-4. VNC password in temporary file, not process arguments (prevents ps exposure)
-5. SSH key validation before agent loading
-6. Shellcheck validation in CI/CD
-7. Strict error handling in common.sh prevents silent configuration failures (added 2025-10-14)
+4. Path traversal validation on TWS_SETTINGS_PATH (rejects ".." sequences)
+5. VNC password in temporary file, not process arguments (prevents ps exposure)
+6. SSH key validation before agent loading
+7. Shellcheck validation in CI/CD
+8. Strict error handling in common.sh prevents silent configuration failures (added 2025-10-14)
 
 ## Configuration
 All configuration comes from environment variables set in docker-compose.yml:
+
+### Settings Configuration
+- `TWS_SETTINGS_PATH` - Optional custom directory for TWS settings (default: TWS_PATH)
+  - Security: Validated against path traversal (rejects paths containing "..")
+  - Directory created with mkdir -p if it doesn't exist
+  - See common.sh:19-37 for implementation
 
 ### SSH Tunnel Configuration
 - `SSH_TUNNEL` - "yes" (tunnel only), "both" (tunnel + socat), or unset (socat only)
@@ -183,6 +210,7 @@ All scripts use `.>` prefix for status messages to distinguish from IB Gateway/T
 - README.md:312-364 - Security considerations for network exposure
 - SECURITY.md - Detailed security patterns and vulnerability mitigation
 - tests/security_test_ssh_injection.sh - Security validation tests
-- sessions/tasks/done/h-fix-command-injection-ssh.md - SSH command injection security fix
+- sessions/tasks/done/h-fix-command-injection-ssh.md - SSH command injection security fix (2025-10-14)
 - sessions/tasks/done/h-fix-missing-error-handling.md - Strict error handling in common.sh (2025-10-14)
-- sessions/tasks/h-fix-vnc-password-exposure.md - VNC password exposure fix (2025-10-14)
+- sessions/tasks/done/h-fix-vnc-password-exposure.md - VNC password exposure fix (2025-10-14)
+- sessions/tasks/done/h-fix-path-traversal.md - Path traversal validation for TWS_SETTINGS_PATH (2025-10-14)
