@@ -18,11 +18,18 @@ apply_settings() {
 		# where are settings stored
 		if [ -n "$TWS_SETTINGS_PATH" ]; then
 			echo ".> Settings directory set to: $TWS_SETTINGS_PATH"
+
+			# Validate against path traversal
+			if [[ "$TWS_SETTINGS_PATH" =~ \.\. ]]; then
+				echo ".> Error: TWS_SETTINGS_PATH contains invalid path traversal"
+				exit 1
+			fi
+
 			_JTS_PATH=$TWS_SETTINGS_PATH
 			if [ ! -d "$TWS_SETTINGS_PATH" ]; then
 				# if TWS_SETTINGS_PATH does not exists, create it
 				echo ".> Creating directory: $TWS_SETTINGS_PATH"
-				mkdir "$TWS_SETTINGS_PATH"
+				mkdir -p "$TWS_SETTINGS_PATH"
 			fi
 		else
 			echo ".> Settings directory NOT set, defaulting to: $TWS_PATH"
